@@ -1,5 +1,8 @@
 # OOD Generalization as Bifurcation
 
+## Workflow Rules
+- **Auto-update docs**: After completing any task that changes the codebase (new files, modified APIs, new CLI args, etc.), update CLAUDE.md and README.md immediately without waiting for an explicit prompt.
+
 ## Project Overview
 Comparing two independent generative models (CFDG diffusion vs CFM flow matching) on out-of-distribution bi-digit MNIST composition. Both use a shared U-Net backbone (`unet.py`) but with **separate weight instances**.
 
@@ -29,6 +32,16 @@ Comparing two independent generative models (CFDG diffusion vs CFM flow matching
 - **Flow (CFM)**: OT path with `sigma_min = 1e-5`, velocity prediction. Sampling: forward Euler t=0→1.
 - Both use 50 sampling steps and CFG guidance scale w=3.0 by default.
 
+### Superposition Principle & Sampling Strategies
+The project investigates the decomposition: `e(L, R) ≈ e(L, 0) + e(0, R) - e(0, 0)` where `e` is the model's conditional score/velocity, `0` = blank label (black image, NOT null token 9). A **semantic bifurcation window** exists mid-sampling where joint and sum scores diverge significantly.
+
+Three sampling strategies in `mass_sampling.py`:
+- **joint** (default): `e(L, R)` at all steps.
+- **decomposed**: `e(L, 0) + e(0, R) - e(0, 0)` at all steps (3 forward passes per step).
+- **hybrid**: decomposed inside bifurcation window (`--bif-start`/`--bif-end`), joint outside.
+
+CFG is always applied on top: `(1+w)*cond - w*uncond` where uncond uses null token 9.
+
 ### Sampling Output
 - `mass_sampling.py` outputs 84x56 PNG images (3 rows of 28x56 stacked vertically).
 - Filename format: `seed{NNNN}_{left}{right}.png` (e.g., `seed0042_28.png`).
@@ -43,10 +56,19 @@ Comparing two independent generative models (CFDG diffusion vs CFM flow matching
 | `train_vae.py` | Stage 1: VAE pre-training |
 | `train_diffusion.py` | Stage 2a: CFDG diffusion training |
 | `train_flow.py` | Stage 2b: CFM flow matching training |
-| `mass_sampling.py` | Generate images from trained models |
+| `mass_sampling.py` | Generate images from trained models (joint/decomposed/hybrid) |
+| `visualize.py` | Visualization: VAE recon, interference plots, progress grids, score heatmaps |
 | `disentangled_judge.py` | Evaluate generated samples (train classifier / judge) |
 | `create_bidgit_data.py` | Create bi-digit datasets from single-digit MNIST |
 | `inspect_bi_digit.py` | Interactive dataset inspection |
+
+## `visualize.py` Subcommands
+| Subcommand | Purpose |
+|------------|---------|
+| `recon` | VAE reconstruction on random samples from a .pkl dataset |
+| `interference` | MSE + Cosine Similarity between joint and sum scores across sampling steps |
+| `progress` | 5-row (milestone steps) x 5-col (joint, sum, e(L,0), e(0,R), e(0,0)) decoded image grid |
+| `heatmap` | Same grid layout but showing L2 norm of score in latent space (7x14, inferno colormap) |
 
 ## Virtual Environment
 Activate with: `source ../venv/bin/activate`

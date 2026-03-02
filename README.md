@@ -57,26 +57,32 @@ python train_flow.py \
 
 ### Stage 3: Mass Sampling
 
-Generate OOD digit pairs from a trained model:
+Generate OOD digit pairs with different scoring strategies:
 
 ```bash
-# Diffusion model
-python mass_sampling.py \
-    --model-type diffusion \
-    --checkpoint diffusion_checkpoint.npz \
-    --vae-checkpoint vae_checkpoint.npz \
-    --seed-lo 0 --seed-hi 99 \
-    --pairs 28,32,53,85,22,33,55,88 \
-    --output-dir samples_diffusion/
-
-# Flow matching model
+# Joint scoring (default, standard CFG)
 python mass_sampling.py \
     --model-type flow \
     --checkpoint cfm_checkpoint.npz \
-    --vae-checkpoint vae_checkpoint.npz \
     --seed-lo 0 --seed-hi 99 \
-    --pairs 28,32,53,85,22,33,55,88 \
-    --output-dir samples_flow/
+    --output-dir samples_flow_joint/ \
+    --strategy joint
+
+# Decomposed scoring: e(L,0) + e(0,R) - e(0,0)
+python mass_sampling.py \
+    --model-type flow \
+    --checkpoint cfm_checkpoint.npz \
+    --seed-lo 0 --seed-hi 99 \
+    --output-dir samples_flow_decomposed/ \
+    --strategy decomposed
+
+# Hybrid: decomposed in bifurcation window, joint outside
+python mass_sampling.py \
+    --model-type flow \
+    --checkpoint cfm_checkpoint.npz \
+    --seed-lo 0 --seed-hi 99 \
+    --output-dir samples_flow_hybrid/ \
+    --strategy hybrid --bif-start 0.3 --bif-end 0.7
 ```
 
 Each seed produces a 84x56 PNG image (3 rows of 28x56 bi-digit images stacked vertically).
@@ -84,20 +90,51 @@ Each seed produces a 84x56 PNG image (3 rows of 28x56 bi-digit images stacked ve
 ### Stage 4: Evaluate with Judge
 
 ```bash
-# Judge diffusion samples
 python disentangled_judge.py \
     --mode judge \
     --checkpoint judge_checkpoint.npz \
-    --samples-dir samples_diffusion/ \
-    --output judge_report_diffusion.md
-
-# Judge flow samples
-python disentangled_judge.py \
-    --mode judge \
-    --checkpoint judge_checkpoint.npz \
-    --samples-dir samples_flow/ \
-    --output judge_report_flow.md
+    --samples-dir samples_flow_joint/ \
+    --output judge_report.md
 ```
+
+## Visualization
+
+```bash
+# VAE reconstruction quality
+python visualize.py recon \
+    --data mnist_bi_digit_vae.pkl \
+    --output recon.png
+
+# Interference: MSE & cosine similarity between joint and sum scores
+python visualize.py interference \
+    --model-type flow --checkpoint cfm_checkpoint.npz \
+    --left 2 --right 8 \
+    --output interference.png
+
+# Generation progress (decoded images at 5 milestone steps)
+python visualize.py progress \
+    --model-type flow --checkpoint cfm_checkpoint.npz \
+    --left 2 --right 8 \
+    --output progress.png
+
+# Score magnitude heatmaps in latent space
+python visualize.py heatmap \
+    --model-type flow --checkpoint cfm_checkpoint.npz \
+    --left 2 --right 8 \
+    --output heatmap.png
+```
+
+## Sampling Strategies
+
+The project tests the **superposition principle**: `e(L, R) ≈ e(L, 0) + e(0, R) - e(0, 0)`, where label `0` = blank (black image half).
+
+| Strategy | Conditional Score | Cost per Step |
+|----------|------------------|---------------|
+| `joint` | `e(L, R)` | 2 forward passes (cond + uncond) |
+| `decomposed` | `e(L,0) + e(0,R) - e(0,0)` | 4 forward passes |
+| `hybrid` | decomposed in bifurcation window, joint outside | 2-4 depending on step |
+
+A **semantic bifurcation window** exists mid-sampling where joint and sum scores diverge. The hybrid strategy uses decomposed scoring only inside this window (`--bif-start`/`--bif-end`), aiming for better OOD accuracy than joint at lower cost than full decomposed.
 
 ## Key Parameters
 
@@ -105,6 +142,9 @@ python disentangled_judge.py \
 |-----------|---------|-------------|
 | `--guidance-scale` | 3.0 | CFG strength during sampling |
 | `--steps` | 50 | Number of ODE solver steps |
+| `--strategy` | joint | Scoring strategy: joint, decomposed, hybrid |
+| `--bif-start` | 0.3 | Bifurcation window start (hybrid only) |
+| `--bif-end` | 0.7 | Bifurcation window end (hybrid only) |
 | `--eval-interval` | 10 | Interference metric logging frequency |
 | `--lr` | 1e-4 | Learning rate for stage-2 training |
 | `--batch-size` | 64 | Training batch size |
