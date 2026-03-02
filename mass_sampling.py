@@ -85,7 +85,7 @@ def sample_diffusion(model, left_digit, right_digit, num_samples=3,
 
     dt = 1.0 / num_steps
     for step in range(num_steps):
-        t_val = 1.0 - step * dt
+        t_val = 0.999 - step * dt
         t_next = t_val - dt
         t_batch = mx.full((num_samples,), t_val)
         progress = step / num_steps
