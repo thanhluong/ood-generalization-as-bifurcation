@@ -211,3 +211,5 @@ __marimo__/
 *.npz
 *.jsonl
 generated_*/
+*.png
+legacy_*.py
