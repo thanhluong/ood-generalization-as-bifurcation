@@ -9,6 +9,7 @@ from unet import UNet
 
 NULL_TOKEN = 9
 SIGMA_MIN = 1e-5
+BLANK_LABEL = 0  # label 0 = blank (all-black image half)
 
 
 def load_model(checkpoint_path):
@@ -37,8 +38,38 @@ def cfg_combine(output_cond, output_uncond, guidance_scale):
     return (1.0 + guidance_scale) * output_cond - guidance_scale * output_uncond
 
 
+def compute_guided_score(model, z, t_batch, left_cond, right_cond,
+                         null_left, null_right, guidance_scale,
+                         strategy, progress, bif_start, bif_end):
+    """Compute CFG-guided score based on sampling strategy.
+
+    Args:
+        strategy: "joint", "decomposed", or "hybrid"
+        progress: float in [0, 1], fraction of sampling steps completed
+        bif_start/bif_end: bifurcation window bounds (used only for hybrid)
+    """
+    B = z.shape[0]
+    blank = mx.full((B,), BLANK_LABEL, dtype=mx.int32)
+
+    use_decomposed = (strategy == "decomposed" or
+                      (strategy == "hybrid" and
+                       bif_start <= progress < bif_end))
+
+    if use_decomposed:
+        out_left = model(z, t_batch, left_cond, blank)
+        out_right = model(z, t_batch, blank, right_cond)
+        out_blank = model(z, t_batch, blank, blank)
+        out_cond = out_left + out_right - out_blank
+    else:
+        out_cond = model(z, t_batch, left_cond, right_cond)
+
+    out_uncond = model(z, t_batch, null_left, null_right)
+    return cfg_combine(out_cond, out_uncond, guidance_scale)
+
+
 def sample_diffusion(model, left_digit, right_digit, num_samples=3,
-                     num_steps=50, guidance_scale=3.0):
+                     num_steps=50, guidance_scale=3.0,
+                     strategy="joint", bif_start=0.0, bif_end=1.0):
     """DDIM sampling for classifier-free diffusion guidance.
 
     Backward Euler from t=1 (noise) to t=0 (clean).
@@ -57,23 +88,22 @@ def sample_diffusion(model, left_digit, right_digit, num_samples=3,
         t_val = 1.0 - step * dt
         t_next = t_val - dt
         t_batch = mx.full((num_samples,), t_val)
+        progress = step / num_steps
 
         # alpha_bar(t) = 1 - t
         ab_t = 1.0 - t_val
         ab_next = 1.0 - t_next
 
-        # Conditional and unconditional predictions
-        eps_cond = model(z, t_batch, left_cond, right_cond)
-        eps_uncond = model(z, t_batch, left_null, right_null)
-        eps_guided = cfg_combine(eps_cond, eps_uncond, guidance_scale)
+        eps_guided = compute_guided_score(
+            model, z, t_batch, left_cond, right_cond,
+            left_null, right_null, guidance_scale,
+            strategy, progress, bif_start, bif_end)
 
         # DDIM deterministic step
-        # Predict z_0 from current z_t and eps
         sqrt_ab = mx.sqrt(mx.maximum(mx.array(ab_t), mx.array(1e-8)))
         sqrt_one_minus_ab = mx.sqrt(mx.maximum(mx.array(1.0 - ab_t), mx.array(1e-8)))
         z_0_pred = (z - sqrt_one_minus_ab * eps_guided) / sqrt_ab
 
-        # Step to t_next
         sqrt_ab_next = mx.sqrt(mx.maximum(mx.array(ab_next), mx.array(1e-8)))
         sqrt_one_minus_ab_next = mx.sqrt(
             mx.maximum(mx.array(1.0 - ab_next), mx.array(1e-8)))
@@ -84,7 +114,8 @@ def sample_diffusion(model, left_digit, right_digit, num_samples=3,
 
 
 def sample_flow(model, left_digit, right_digit, num_samples=3,
-                num_steps=50, guidance_scale=3.0):
+                num_steps=50, guidance_scale=3.0,
+                strategy="joint", bif_start=0.0, bif_end=1.0):
     """Forward Euler ODE sampling for conditional flow matching.
 
     Forward from t=0 (noise) to t=1 (data).
@@ -101,10 +132,12 @@ def sample_flow(model, left_digit, right_digit, num_samples=3,
     for step in range(num_steps):
         t_val = step * dt
         t_batch = mx.full((num_samples,), t_val)
+        progress = step / num_steps
 
-        v_cond = model(z, t_batch, left_cond, right_cond)
-        v_uncond = model(z, t_batch, left_null, right_null)
-        v_guided = cfg_combine(v_cond, v_uncond, guidance_scale)
+        v_guided = compute_guided_score(
+            model, z, t_batch, left_cond, right_cond,
+            left_null, right_null, guidance_scale,
+            strategy, progress, bif_start, bif_end)
 
         z = z + dt * v_guided
         mx.eval(z)
@@ -152,6 +185,13 @@ def main():
                         help="Classifier-free guidance scale w")
     parser.add_argument("--steps", type=int, default=50,
                         help="Number of sampling steps")
+    parser.add_argument("--strategy", type=str, default="joint",
+                        choices=["joint", "decomposed", "hybrid"],
+                        help="Scoring strategy: joint, decomposed, or hybrid")
+    parser.add_argument("--bif-start", type=float, default=0.3,
+                        help="Bifurcation window start (fraction 0-1, for hybrid)")
+    parser.add_argument("--bif-end", type=float, default=0.7,
+                        help="Bifurcation window end (fraction 0-1, for hybrid)")
     args = parser.parse_args()
 
     os.makedirs(args.output_dir, exist_ok=True)
@@ -171,21 +211,25 @@ def main():
     total_images = (args.seed_hi - args.seed_lo + 1) * len(pairs)
     print(f"Generating {total_images} images "
           f"(seeds {args.seed_lo}-{args.seed_hi}, pairs {args.pairs})")
+    print(f"Strategy: {args.strategy}", end="")
+    if args.strategy == "hybrid":
+        print(f" (bifurcation window: {args.bif_start:.2f}-{args.bif_end:.2f})")
+    else:
+        print()
 
     from PIL import Image
 
     for seed in range(args.seed_lo, args.seed_hi + 1):
-        # print progress
         print(f"Generating images for seed {seed}")
         for left_d, right_d in pairs:
             mx.random.seed(seed)
 
-            # Generate 3 samples (3 rows)
             z = sample_fn(model, left_d, right_d, num_samples=3,
-                          num_steps=args.steps, guidance_scale=args.guidance_scale)
+                          num_steps=args.steps, guidance_scale=args.guidance_scale,
+                          strategy=args.strategy,
+                          bif_start=args.bif_start, bif_end=args.bif_end)
             imgs = latent_to_image(vae, z)  # (3, 28, 56)
 
-            # Stack 3 rows into 84x56 image
             stacked = np.concatenate(list(imgs), axis=0)  # (84, 56)
 
             fname = f"seed{seed:04d}_{left_d}{right_d}.png"
