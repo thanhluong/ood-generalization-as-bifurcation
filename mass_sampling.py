@@ -175,6 +175,8 @@ def main():
     from PIL import Image
 
     for seed in range(args.seed_lo, args.seed_hi + 1):
+        # print progress
+        print(f"Generating images for seed {seed}")
         for left_d, right_d in pairs:
             mx.random.seed(seed)
 
