@@ -55,16 +55,15 @@ def compute_guided_score(model, z, t_batch, left_cond, right_cond,
                       (strategy == "hybrid" and
                        bif_start <= progress < bif_end))
 
+    out_uncond = model(z, t_batch, null_left, null_right)
     if use_decomposed:
-        out_left = model(z, t_batch, left_cond, blank)
-        out_right = model(z, t_batch, blank, right_cond)
-        out_blank = model(z, t_batch, blank, blank)
-        out_cond = out_left + out_right - out_blank
+        out_left = model(z, t_batch, left_cond, null_right)
+        out_right = model(z, t_batch, null_left, right_cond)
+        out_decomposed = out_uncond + guidance_scale * (out_left + out_right - 2 * out_uncond)
+        return out_decomposed
     else:
         out_cond = model(z, t_batch, left_cond, right_cond)
-
-    out_uncond = model(z, t_batch, null_left, null_right)
-    return cfg_combine(out_cond, out_uncond, guidance_scale)
+        return out_uncond + guidance_scale * (out_cond - out_uncond)
 
 
 def sample_diffusion(model, left_digit, right_digit, num_samples=3,
