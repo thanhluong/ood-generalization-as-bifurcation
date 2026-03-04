@@ -5,8 +5,7 @@ import mlx.core as mx
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
 
-from mass_sampling import (load_model, load_vae, latent_to_image,
-                           cfg_combine, NULL_TOKEN, BLANK_LABEL)
+from mass_sampling import load_model, load_vae, latent_to_image, NULL_TOKEN
 
 
 # ---------------------------------------------------------------------------
@@ -55,7 +54,7 @@ def _run_diffusion_loop(model, z_init, cond_fn, guidance_scale, num_steps,
 
         out_cond = cond_fn(model, z, t_batch)
         out_uncond = model(z, t_batch, null_l, null_r)
-        guided = cfg_combine(out_cond, out_uncond, guidance_scale)
+        guided = out_uncond + guidance_scale * (out_cond - out_uncond)
 
         if step in milestones:
             mx.eval(guided)
@@ -92,7 +91,7 @@ def _run_flow_loop(model, z_init, cond_fn, guidance_scale, num_steps,
 
         out_cond = cond_fn(model, z, t_batch)
         out_uncond = model(z, t_batch, null_l, null_r)
-        guided = cfg_combine(out_cond, out_uncond, guidance_scale)
+        guided = out_uncond + guidance_scale * (out_cond - out_uncond)
 
         if step in milestones:
             mx.eval(guided)
@@ -125,7 +124,6 @@ def _measure_interference_diffusion(model, z_init, left, right,
     B = z_init.shape[0]
     left_c, right_c = _make_labels(B, left, right)
     null_l, null_r = _make_labels(B, NULL_TOKEN, NULL_TOKEN)
-    blank = mx.full((B,), BLANK_LABEL, dtype=mx.int32)
 
     z = z_init
     mses, coss, steps_list = [], [], []
@@ -136,20 +134,20 @@ def _measure_interference_diffusion(model, z_init, left, right,
         t_next = t_val - dt
         t_batch = mx.full((B,), t_val)
 
-        # Joint score (conditional only, before CFG)
-        v_joint = model(z, t_batch, left_c, right_c)
-        # Sum score
-        v_lb = model(z, t_batch, left_c, blank)
-        v_br = model(z, t_batch, blank, right_c)
-        v_bb = model(z, t_batch, blank, blank)
-        v_sum = v_lb + v_br - v_bb
+        out_uncond = model(z, t_batch, null_l, null_r)
+        out_cond = model(z, t_batch, left_c, right_c)
+        out_left = model(z, t_batch, left_c, null_r)
+        out_right = model(z, t_batch, null_l, right_c)
+
+        guided_joint = out_uncond + guidance_scale * (out_cond - out_uncond)
+        guided_decomp = out_uncond + guidance_scale * (out_left + out_right - 2 * out_uncond)
 
         # MSE
-        diff = v_joint - v_sum
+        diff = guided_joint - guided_decomp
         mse = mx.mean(diff * diff)
         # Cosine
-        vj = v_joint.reshape(B, -1)
-        vs = v_sum.reshape(B, -1)
+        vj = guided_joint.reshape(B, -1)
+        vs = guided_decomp.reshape(B, -1)
         dot = mx.sum(vj * vs, axis=-1)
         nj = mx.sqrt(mx.sum(vj * vj, axis=-1) + 1e-8)
         ns = mx.sqrt(mx.sum(vs * vs, axis=-1) + 1e-8)
@@ -159,18 +157,15 @@ def _measure_interference_diffusion(model, z_init, left, right,
         coss.append(cos.item())
         steps_list.append(step)
 
-        # Advance z using joint + CFG (standard trajectory)
-        v_uncond = model(z, t_batch, null_l, null_r)
-        guided = cfg_combine(v_joint, v_uncond, guidance_scale)
-
+        # Advance z using joint guided score
         ab_t = 1.0 - t_val
         ab_next = 1.0 - t_next
         sqrt_ab = mx.sqrt(mx.maximum(mx.array(ab_t), mx.array(1e-8)))
         sqrt_1mab = mx.sqrt(mx.maximum(mx.array(1.0 - ab_t), mx.array(1e-8)))
-        z0 = (z - sqrt_1mab * guided) / sqrt_ab
+        z0 = (z - sqrt_1mab * guided_joint) / sqrt_ab
         sqrt_ab_n = mx.sqrt(mx.maximum(mx.array(ab_next), mx.array(1e-8)))
         sqrt_1mab_n = mx.sqrt(mx.maximum(mx.array(1.0 - ab_next), mx.array(1e-8)))
-        z = sqrt_ab_n * z0 + sqrt_1mab_n * guided
+        z = sqrt_ab_n * z0 + sqrt_1mab_n * guided_joint
         mx.eval(z)
 
     return steps_list, mses, coss
@@ -181,7 +176,6 @@ def _measure_interference_flow(model, z_init, left, right,
     B = z_init.shape[0]
     left_c, right_c = _make_labels(B, left, right)
     null_l, null_r = _make_labels(B, NULL_TOKEN, NULL_TOKEN)
-    blank = mx.full((B,), BLANK_LABEL, dtype=mx.int32)
 
     z = z_init
     mses, coss, steps_list = [], [], []
@@ -191,16 +185,18 @@ def _measure_interference_flow(model, z_init, left, right,
         t_val = step * dt
         t_batch = mx.full((B,), t_val)
 
-        v_joint = model(z, t_batch, left_c, right_c)
-        v_lb = model(z, t_batch, left_c, blank)
-        v_br = model(z, t_batch, blank, right_c)
-        v_bb = model(z, t_batch, blank, blank)
-        v_sum = v_lb + v_br - v_bb
+        out_uncond = model(z, t_batch, null_l, null_r)
+        out_cond = model(z, t_batch, left_c, right_c)
+        out_left = model(z, t_batch, left_c, null_r)
+        out_right = model(z, t_batch, null_l, right_c)
 
-        diff = v_joint - v_sum
+        guided_joint = out_uncond + guidance_scale * (out_cond - out_uncond)
+        guided_decomp = out_uncond + guidance_scale * (out_left + out_right - 2 * out_uncond)
+
+        diff = guided_joint - guided_decomp
         mse = mx.mean(diff * diff)
-        vj = v_joint.reshape(B, -1)
-        vs = v_sum.reshape(B, -1)
+        vj = guided_joint.reshape(B, -1)
+        vs = guided_decomp.reshape(B, -1)
         dot = mx.sum(vj * vs, axis=-1)
         nj = mx.sqrt(mx.sum(vj * vj, axis=-1) + 1e-8)
         ns = mx.sqrt(mx.sum(vs * vs, axis=-1) + 1e-8)
@@ -210,9 +206,8 @@ def _measure_interference_flow(model, z_init, left, right,
         coss.append(cos.item())
         steps_list.append(step)
 
-        v_uncond = model(z, t_batch, null_l, null_r)
-        guided = cfg_combine(v_joint, v_uncond, guidance_scale)
-        z = z + dt * guided
+        # Advance z using joint guided score
+        z = z + dt * guided_joint
         mx.eval(z)
 
     return steps_list, mses, coss
@@ -292,9 +287,9 @@ def cmd_interference(args):
 
     ax1.plot(steps, mses, color="tab:red", linewidth=1.5)
     ax1.set_ylabel("MSE", fontsize=11)
-    ax1.set_title(f"Interference: e({args.left},{args.right}) vs "
-                  f"e({args.left},0)+e(0,{args.right})-e(0,0)  "
-                  f"[{args.model_type}, w={args.guidance_scale}]", fontsize=12)
+    ax1.set_title(f"Interference: joint vs decomposed guided scores  "
+                  f"[{args.model_type}, w={args.guidance_scale}, "
+                  f"pair=({args.left},{args.right})]", fontsize=12)
     ax1.grid(True, alpha=0.3)
 
     ax2.plot(steps, coss, color="tab:blue", linewidth=1.5)
@@ -323,32 +318,32 @@ def cmd_progress(args):
     milestones = _milestone_indices(args.steps)
     B = 1
     left, right = args.left, args.right
-    blank_l = BLANK_LABEL
+    null = NULL_TOKEN
 
-    # Define 5 conditioning functions
+    # Define 5 conditioning functions (using null token, matching compute_guided_score)
     def cond_joint(m, z, t):
         return _score_at(m, z, t, left, right)
 
     def cond_sum(m, z, t):
-        return (_score_at(m, z, t, left, blank_l) +
-                _score_at(m, z, t, blank_l, right) -
-                _score_at(m, z, t, blank_l, blank_l))
+        return (_score_at(m, z, t, left, null) +
+                _score_at(m, z, t, null, right) -
+                _score_at(m, z, t, null, null))
 
-    def cond_left_blank(m, z, t):
-        return _score_at(m, z, t, left, blank_l)
+    def cond_left_null(m, z, t):
+        return _score_at(m, z, t, left, null)
 
-    def cond_blank_right(m, z, t):
-        return _score_at(m, z, t, blank_l, right)
+    def cond_null_right(m, z, t):
+        return _score_at(m, z, t, null, right)
 
-    def cond_blank_blank(m, z, t):
-        return _score_at(m, z, t, blank_l, blank_l)
+    def cond_null_null(m, z, t):
+        return _score_at(m, z, t, null, null)
 
     variants = [
         (f"e({left},{right})", cond_joint),
-        (f"e({left},0)+e(0,{right})-e(0,0)", cond_sum),
-        (f"e({left},0)", cond_left_blank),
-        (f"e(0,{right})", cond_blank_right),
-        ("e(0,0)", cond_blank_blank),
+        (f"e({left},∅)+e(∅,{right})-e(∅,∅)", cond_sum),
+        (f"e({left},∅)", cond_left_null),
+        (f"e(∅,{right})", cond_null_right),
+        ("e(∅,∅)", cond_null_null),
     ]
 
     n_rows = len(milestones)
@@ -394,31 +389,31 @@ def cmd_heatmap(args):
 
     milestones = _milestone_indices(args.steps)
     left, right = args.left, args.right
-    blank_l = BLANK_LABEL
+    null = NULL_TOKEN
 
     def cond_joint(m, z, t):
         return _score_at(m, z, t, left, right)
 
     def cond_sum(m, z, t):
-        return (_score_at(m, z, t, left, blank_l) +
-                _score_at(m, z, t, blank_l, right) -
-                _score_at(m, z, t, blank_l, blank_l))
+        return (_score_at(m, z, t, left, null) +
+                _score_at(m, z, t, null, right) -
+                _score_at(m, z, t, null, null))
 
-    def cond_left_blank(m, z, t):
-        return _score_at(m, z, t, left, blank_l)
+    def cond_left_null(m, z, t):
+        return _score_at(m, z, t, left, null)
 
-    def cond_blank_right(m, z, t):
-        return _score_at(m, z, t, blank_l, right)
+    def cond_null_right(m, z, t):
+        return _score_at(m, z, t, null, right)
 
-    def cond_blank_blank(m, z, t):
-        return _score_at(m, z, t, blank_l, blank_l)
+    def cond_null_null(m, z, t):
+        return _score_at(m, z, t, null, null)
 
     variants = [
         (f"e({left},{right})", cond_joint),
-        (f"e({left},0)+e(0,{right})-e(0,0)", cond_sum),
-        (f"e({left},0)", cond_left_blank),
-        (f"e(0,{right})", cond_blank_right),
-        ("e(0,0)", cond_blank_blank),
+        (f"e({left},∅)+e(∅,{right})-e(∅,∅)", cond_sum),
+        (f"e({left},∅)", cond_left_null),
+        (f"e(∅,{right})", cond_null_right),
+        ("e(∅,∅)", cond_null_null),
     ]
 
     n_rows = len(milestones)

@@ -126,15 +126,15 @@ python visualize.py heatmap \
 
 ## Sampling Strategies
 
-The project tests the **superposition principle**: `e(L, R) ≈ e(L, 0) + e(0, R) - e(0, 0)`, where label `0` = blank (black image half).
+The project tests whether CFG-guided scores decompose: `e_∅ + w·(e(L,R) - e_∅) ≈ e_∅ + w·(e(L,∅) + e(∅,R) - 2·e_∅)`, where `∅` is the null token (label 9) and `w` is the guidance scale.
 
-| Strategy | Conditional Score | Cost per Step |
-|----------|------------------|---------------|
-| `joint` | `e(L, R)` | 2 forward passes (cond + uncond) |
-| `decomposed` | `e(L,0) + e(0,R) - e(0,0)` | 4 forward passes |
-| `hybrid` | decomposed in bifurcation window, joint outside | 2-4 depending on step |
+| Strategy | Guided Score | Cost per Step |
+|----------|-------------|---------------|
+| `joint` | `e_∅ + w·(e(L,R) - e_∅)` | 2 forward passes |
+| `decomposed` | `e_∅ + w·(e(L,∅) + e(∅,R) - 2·e_∅)` | 3 forward passes |
+| `hybrid` | decomposed in bifurcation window, joint outside | 2-3 depending on step |
 
-A **semantic bifurcation window** exists mid-sampling where joint and sum scores diverge. The hybrid strategy uses decomposed scoring only inside this window (`--bif-start`/`--bif-end`), aiming for better OOD accuracy than joint at lower cost than full decomposed.
+A **semantic bifurcation window** exists mid-sampling where joint and decomposed guided scores diverge. The hybrid strategy uses decomposed scoring only inside this window (`--bif-start`/`--bif-end`), aiming for better OOD accuracy than joint at lower cost than full decomposed.
 
 ## Key Parameters
 

@@ -33,14 +33,16 @@ Comparing two independent generative models (CFDG diffusion vs CFM flow matching
 - Both use 50 sampling steps and CFG guidance scale w=3.0 by default.
 
 ### Superposition Principle & Sampling Strategies
-The project investigates the decomposition: `e(L, R) ≈ e(L, 0) + e(0, R) - e(0, 0)` where `e` is the model's conditional score/velocity, `0` = blank label (black image, NOT null token 9). A **semantic bifurcation window** exists mid-sampling where joint and sum scores diverge significantly.
+The project investigates the decomposition of CFG-guided scores using null token `∅` (label 9):
+- **Joint guided**: `e_∅ + w * (e(L,R) - e_∅)` where `e_∅ = model(z, t, ∅, ∅)`
+- **Decomposed guided**: `e_∅ + w * (e(L,∅) + e(∅,R) - 2·e_∅)`
+
+A **semantic bifurcation window** exists mid-sampling where joint and decomposed guided scores diverge significantly.
 
 Three sampling strategies in `mass_sampling.py`:
-- **joint** (default): `e(L, R)` at all steps.
-- **decomposed**: `e(L, 0) + e(0, R) - e(0, 0)` at all steps (3 forward passes per step).
+- **joint** (default): joint guided score at all steps (2 forward passes per step).
+- **decomposed**: decomposed guided score at all steps (3 forward passes per step).
 - **hybrid**: decomposed inside bifurcation window (`--bif-start`/`--bif-end`), joint outside.
-
-CFG is always applied on top: `(1+w)*cond - w*uncond` where uncond uses null token 9.
 
 ### Sampling Output
 - `mass_sampling.py` outputs 84x56 PNG images (3 rows of 28x56 stacked vertically).

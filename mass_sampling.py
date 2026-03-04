@@ -9,8 +9,6 @@ from unet import UNet
 
 NULL_TOKEN = 9
 SIGMA_MIN = 1e-5
-BLANK_LABEL = 0  # label 0 = blank (all-black image half)
-
 
 def load_model(checkpoint_path):
     """Load a UNet model from checkpoint (weights only, no optimizer)."""
@@ -33,11 +31,6 @@ def load_vae(checkpoint_path):
     return vae
 
 
-def cfg_combine(output_cond, output_uncond, guidance_scale):
-    """Classifier-free guidance: (1+w)*cond - w*uncond."""
-    return (1.0 + guidance_scale) * output_cond - guidance_scale * output_uncond
-
-
 def compute_guided_score(model, z, t_batch, left_cond, right_cond,
                          null_left, null_right, guidance_scale,
                          strategy, progress, bif_start, bif_end):
@@ -49,7 +42,6 @@ def compute_guided_score(model, z, t_batch, left_cond, right_cond,
         bif_start/bif_end: bifurcation window bounds (used only for hybrid)
     """
     B = z.shape[0]
-    blank = mx.full((B,), BLANK_LABEL, dtype=mx.int32)
 
     use_decomposed = (strategy == "decomposed" or
                       (strategy == "hybrid" and
