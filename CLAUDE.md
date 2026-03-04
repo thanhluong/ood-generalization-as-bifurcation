@@ -61,6 +61,7 @@ Three sampling strategies in `mass_sampling.py`:
 | `mass_sampling.py` | Generate images from trained models (joint/decomposed/hybrid) |
 | `visualize.py` | Visualization: VAE recon, interference plots, progress grids, score heatmaps |
 | `disentangled_judge.py` | Evaluate generated samples (train classifier / judge) |
+| `eval_bifurcation_windows.py` | Sweep bifurcation windows, plot hybrid vs joint improvement |
 | `create_bidgit_data.py` | Create bi-digit datasets from single-digit MNIST |
 | `inspect_bi_digit.py` | Interactive dataset inspection |
 

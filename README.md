@@ -97,6 +97,27 @@ python disentangled_judge.py \
     --output judge_report.md
 ```
 
+### Stage 5: Evaluate Bifurcation Windows
+
+Sweep sliding bifurcation windows and plot hybrid vs joint improvement:
+
+```bash
+# Default: window-length=0.2, seeds 1-50
+python eval_bifurcation_windows.py \
+    --model-type flow \
+    --checkpoint cfm_checkpoint.npz
+
+# Custom window length and seed range
+python eval_bifurcation_windows.py \
+    --model-type flow \
+    --checkpoint cfm_checkpoint.npz \
+    --window-length 0.3 \
+    --seed-lo 1 --seed-hi 100 \
+    --output eval_bif_0.3.png
+```
+
+Produces a 3-panel bar chart showing Δ accuracy (hybrid − joint) for Left, Right, and Pair metrics across all window positions. The optimal window is highlighted with a ★ marker.
+
 ## Visualization
 
 ```bash
