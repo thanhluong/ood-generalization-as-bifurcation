@@ -96,7 +96,8 @@ def main():
 
     l = args.window_length
     # Validate divisibility by 0.05
-    if round(l / 0.05) != l / 0.05 or l <= 0 or l > 1:
+    if abs(round(l / 0.05) - l / 0.05) > 1e-9 or l <= 0 or l > 1:
+        print(f"{round(l / 0.05)} {l / 0.05}")
         print("Error: --window-length must be > 0, <= 1, and divisible by 0.05")
         sys.exit(1)
 
