@@ -1,0 +1,15 @@
+\begin{table}[t]
+\centering
+\caption{Out-of-distribution compositional generalization errors. Each cell reports the number of misclassified samples (out of 300) for a given model--strategy combination on held-out digit pairs never seen during training. Lower is better. A disentangled classifier independently predicts left and right digits; a sample is counted as an error if either prediction disagrees with the conditioning label.}
+\label{tab:ood-errors}
+\begin{tabular}{lccccccccc}
+\toprule
+Method & \textbf{2,8} & \textbf{3,2} & \textbf{5,3} & \textbf{8,5} & \textbf{2,2} & \textbf{3,3} & \textbf{5,5} & \textbf{8,8} & Total \\
+\midrule
+CFDG (joint) & 74 & 47 & 45 & 57 & 32 & 12 & 50 & 6 & 323 \\
+CFDG (decomposed) & 27 & 28 & 29 & 30 & 15 & 3 & 37 & 2 & 171 \\
+CFM (joint) & 19 & 23 & 28 & 21 & 14 & 14 & 18 & 21 & 158 \\
+CFM (decomposed) & 18 & 21 & 9 & 14 & 8 & 2 & 15 & 12 & 99 \\
+\bottomrule
+\end{tabular}
+\end{table}
