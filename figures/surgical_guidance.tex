@@ -1,0 +1,207 @@
+% Surgical Guidance (Hybrid Sampling) — Illustration
+% Fits Springer LNCS text width (~122mm / 12.2cm)
+% Include surgical_guidance_preamble.tex in your document preamble
+
+\begin{figure}[t]
+\centering
+\resizebox{\textwidth}{!}{%
+\begin{tikzpicture}[
+    >=Stealth,
+    font=\footnotesize,
+    every node/.style={inner sep=1pt},
+    timeline/.style={line width=1.8pt, line cap=round},
+    phase label/.style={font=\scriptsize\bfseries, text=white,
+                        inner sep=2.5pt, rounded corners=2pt,
+                        minimum height=14pt},
+    formula/.style={font=\scriptsize, text=black, align=center},
+    heading/.style={font=\small\bfseries, anchor=east},
+    endpoint/.style={circle, minimum size=6pt, inner sep=0pt,
+                     line width=0.8pt},
+    brace label/.style={font=\scriptsize\bfseries, text=bifBorder},
+    fwd label/.style={font=\tiny, text=noiseGray, align=center},
+  ]
+
+  % === Dimensions ===
+  \def\tlLen{9.6}    % timeline length (cm)
+  \def\tlY{0}        % y-offset base
+  \def\rowSep{3.2}   % vertical separation between two model rows
+  \def\bifS{0.30}    % bifurcation start (fraction)
+  \def\bifE{0.70}    % bifurcation end (fraction)
+
+  % === Computed positions ===
+  \pgfmathsetmacro{\xStart}{0}
+  \pgfmathsetmacro{\xEnd}{\tlLen}
+  \pgfmathsetmacro{\xBifS}{\tlLen * \bifS}
+  \pgfmathsetmacro{\xBifE}{\tlLen * \bifE}
+
+  % =====================================================================
+  %   CFM  (Conditional Flow Matching) — top row
+  % =====================================================================
+  \begin{scope}[yshift=\rowSep cm]
+
+    % --- Bifurcation window background ---
+    \fill[bifYellow, rounded corners=3pt, opacity=0.55]
+      (\xBifS, -1.05) rectangle (\xBifE, 1.05);
+    \draw[bifBorder, line width=0.9pt, dashed, rounded corners=3pt]
+      (\xBifS, -1.05) rectangle (\xBifE, 1.05);
+
+    % --- Row heading ---
+    \node[heading, text=cfmTeal] at (-0.3, 0) {CFM};
+
+    % --- Timeline segments ---
+    % Joint pre-window
+    \draw[timeline, jointBlue]
+      (\xStart, 0) -- (\xBifS, 0);
+    % Decomposed (surgical) window
+    \draw[timeline, decompOrange]
+      (\xBifS, 0) -- (\xBifE, 0);
+    % Joint post-window
+    \draw[timeline, jointBlue]
+      (\xBifE, 0) -- (\xEnd, 0);
+
+    % --- Endpoints ---
+    \node[endpoint, fill=noiseGray, draw=noiseGray]  (cfm0) at (\xStart, 0) {};
+    \node[endpoint, fill=dataGreen, draw=dataGreen]  (cfm1) at (\xEnd, 0) {};
+
+    % Endpoint labels
+    \node[below=4pt of cfm0, font=\scriptsize\bfseries, text=noiseGray] {$z_0 \!\sim\! \mathcal{N}$};
+    \node[below=4pt of cfm1, font=\scriptsize\bfseries, text=dataGreen] {$z_1 \!=\! x$};
+
+    % --- Time axis labels ---
+    \node[above=6pt of cfm0, font=\scriptsize, text=noiseGray] {$t\!=\!0$};
+    \node[above=6pt of cfm1, font=\scriptsize, text=dataGreen] {$t\!=\!1$};
+
+    % --- Direction arrow ---
+    \draw[->, gray, line width=0.5pt]
+      (\xStart+0.15, 0.65) -- (\xEnd-0.15, 0.65)
+      node[midway, above, font=\tiny\itshape, text=gray] {Forward Euler};
+
+    % --- Phase labels (on timeline) ---
+    \node[phase label, fill=jointBlue]
+      at ({(\xStart+\xBifS)/2}, 0) {\textsf{Joint}};
+    \node[phase label, fill=decompOrange, minimum width=20pt]
+      at ({(\xBifS+\xBifE)/2}, 0) {\textsf{Surgical}};
+    \node[phase label, fill=jointBlue]
+      at ({(\xBifE+\xEnd)/2}, 0) {\textsf{Joint}};
+
+    % --- Formulas below timeline ---
+    \node[formula, text=jointBlue] at ({(\xStart+\xBifS)/2}, -0.65)
+      {$\hat{v} = v_\varnothing + w(v_{LR} - v_\varnothing)$};
+    \node[formula, text=decompOrange] at ({(\xBifS+\xBifE)/2}, -0.65)
+      {$\hat{v} = v_\varnothing + w(v_{L\varnothing} \!+\! v_{\varnothing R} \!-\! 2v_\varnothing)$};
+    \node[formula, text=jointBlue] at ({(\xBifE+\xEnd)/2}, -0.65)
+      {$\hat{v} = v_\varnothing + w(v_{LR} - v_\varnothing)$};
+
+  \end{scope}
+
+  % =====================================================================
+  %   DDIM  (Denoising Diffusion) — bottom row
+  % =====================================================================
+  \begin{scope}[yshift=0cm]
+
+    % --- Bifurcation window background ---
+    \fill[bifYellow, rounded corners=3pt, opacity=0.55]
+      (\xBifS, -1.05) rectangle (\xBifE, 1.05);
+    \draw[bifBorder, line width=0.9pt, dashed, rounded corners=3pt]
+      (\xBifS, -1.05) rectangle (\xBifE, 1.05);
+
+    % --- Row heading ---
+    \node[heading, text=ddimIndigo] at (-0.3, 0) {DDIM};
+
+    % --- Timeline segments ---
+    \draw[timeline, jointBlue]
+      (\xStart, 0) -- (\xBifS, 0);
+    \draw[timeline, decompOrange]
+      (\xBifS, 0) -- (\xBifE, 0);
+    \draw[timeline, jointBlue]
+      (\xBifE, 0) -- (\xEnd, 0);
+
+    % --- Endpoints ---
+    \node[endpoint, fill=dataGreen, draw=dataGreen]  (ddim0) at (\xStart, 0) {};
+    \node[endpoint, fill=noiseGray, draw=noiseGray]  (ddim1) at (\xEnd, 0) {};
+
+    % Endpoint labels
+    \node[below=4pt of ddim0, font=\scriptsize\bfseries, text=dataGreen] {$z_0 \!=\! x$};
+    \node[below=4pt of ddim1, font=\scriptsize\bfseries, text=noiseGray] {$z_T \!\sim\! \mathcal{N}$};
+
+    % --- Time axis labels ---
+    \node[above=6pt of ddim0, font=\scriptsize, text=dataGreen] {$t\!=\!0$};
+    \node[above=6pt of ddim1, font=\scriptsize, text=noiseGray] {$t\!=\!1$};
+
+    % --- Direction arrow (DDIM samples backward) ---
+    \draw[<-, gray, line width=0.5pt]
+      (\xStart+0.15, 0.65) -- (\xEnd-0.15, 0.65)
+      node[midway, above, font=\tiny\itshape, text=gray] {DDIM backward};
+
+    % --- Phase labels (on timeline) — note: reversed order for DDIM ---
+    \node[phase label, fill=jointBlue]
+      at ({(\xStart+\xBifS)/2}, 0) {\textsf{Joint}};
+    \node[phase label, fill=decompOrange, minimum width=20pt]
+      at ({(\xBifS+\xBifE)/2}, 0) {\textsf{Surgical}};
+    \node[phase label, fill=jointBlue]
+      at ({(\xBifE+\xEnd)/2}, 0) {\textsf{Joint}};
+
+    % --- Formulas below timeline ---
+    \node[formula, text=jointBlue] at ({(\xStart+\xBifS)/2}, -0.65)
+      {$\hat{\epsilon} = \epsilon_\varnothing + w(\epsilon_{LR} - \epsilon_\varnothing)$};
+    \node[formula, text=decompOrange] at ({(\xBifS+\xBifE)/2}, -0.65)
+      {$\hat{\epsilon} = \epsilon_\varnothing + w(\epsilon_{L\varnothing} \!+\! \epsilon_{\varnothing R} \!-\! 2\epsilon_\varnothing)$};
+    \node[formula, text=jointBlue] at ({(\xBifE+\xEnd)/2}, -0.65)
+      {$\hat{\epsilon} = \epsilon_\varnothing + w(\epsilon_{LR} - \epsilon_\varnothing)$};
+
+  \end{scope}
+
+  % =====================================================================
+  %   Shared annotations
+  % =====================================================================
+
+  % --- Bifurcation window brace (between the two rows) ---
+  \draw[decorate, decoration={brace, amplitude=5pt, mirror}, bifBorder, line width=0.8pt]
+    (\xBifS, {\rowSep - 1.25}) -- (\xBifE, {\rowSep - 1.25})
+    node[midway, below=6pt, brace label] {Semantic Bifurcation Window};
+
+  % --- Progress axis annotation ---
+  \node[font=\tiny, text=gray] at (\xBifS, -1.55) {$p\!=\!0.3$};
+  \node[font=\tiny, text=gray] at (\xBifE, -1.55) {$p\!=\!0.7$};
+  \draw[gray, line width=0.3pt, densely dotted] (\xBifS, -1.4) -- (\xBifS, -1.1);
+  \draw[gray, line width=0.3pt, densely dotted] (\xBifE, -1.4) -- (\xBifE, -1.1);
+
+  % --- Progress label ---
+  \node[font=\tiny\itshape, text=gray, anchor=west] at (\xEnd+0.15, -1.55)
+    {sampling progress $p$};
+
+  % --- Forward pass counts (right side) ---
+  \node[fwd label, anchor=west, text=jointBlue] at (\xEnd+0.3, {\rowSep + 0.15})
+    {2 fwd/step};
+  \node[fwd label, anchor=west, text=decompOrange] at (\xEnd+0.3, {\rowSep - 0.15})
+    {3 fwd/step};
+
+  \node[fwd label, anchor=west, text=jointBlue] at (\xEnd+0.3, 0.15)
+    {2 fwd/step};
+  \node[fwd label, anchor=west, text=decompOrange] at (\xEnd+0.3, -0.15)
+    {3 fwd/step};
+
+  % --- Legend ---
+  \begin{scope}[yshift=-2.3cm, xshift=1.5cm]
+    \fill[jointBlue, rounded corners=1.5pt] (0, 0) rectangle (0.35, 0.18);
+    \node[font=\tiny, anchor=west] at (0.45, 0.09)
+      {Joint guidance: $e_\varnothing + w(e_{LR} - e_\varnothing)$};
+    \fill[decompOrange, rounded corners=1.5pt] (5.2, 0) rectangle (5.55, 0.18);
+    \node[font=\tiny, anchor=west] at (5.65, 0.09)
+      {Surgical guidance: $e_\varnothing + w(e_{L\varnothing} + e_{\varnothing R} - 2e_\varnothing)$};
+  \end{scope}
+
+\end{tikzpicture}%
+}% end resizebox
+\caption{%
+  \textbf{Surgical guidance} applies decomposed classifier-free guidance
+  selectively within the semantic bifurcation window
+  ($p \!\in\! [p_s, p_e]$), while using standard joint guidance outside.
+  The strategy is model-agnostic: it applies identically to
+  CFM (velocity $v$, forward integration) and
+  DDIM (noise $\epsilon$, backward integration),
+  differing only in the predicted quantity and integration direction.
+  $\varnothing$ denotes the null token (label 9) used for classifier-free guidance.%
+}
+\label{fig:surgical-guidance}
+\end{figure}
